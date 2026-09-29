@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Activity Calendar - ปฏิทินกิจกรรมทีม</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+  <!-- Header / Navigation -->
+  <header class="bg-indigo-700 text-white shadow-lg sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid font-bold fa-calendar-days text-2xl text-yellow-300"></i>
+        <div>
+          <h1 class="text-xl font-bold leading-tight">Team Activity Calendar</h1>
+          <p class="text-xs text-indigo-200" id="roomDisplay">ห้องทีม: กำลังโหลด...</p>
+        </div>
+      </div>
+
+      <!-- Control Action Buttons -->
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <button onclick="copyInviteLink()" class="bg-indigo-600 hover:bg-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-400/30 transition flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-link"></i> ลิงก์เชิญทีม
+        </button>
+        <button onclick="openCategoryModal()" class="bg-indigo-600 hover:bg-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-400/30 transition flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-tags"></i> จัดการประเภท
+        </button>
+        <button onclick="openShareWeeklyModal()" class="bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-share-nodes"></i> แชร์รายสัปดาห์
+        </button>
+        <button onclick="openShareMonthlyModal()" class="bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-share-nodes"></i> แชร์รายเดือน
+        </button>
+        <button onclick="openEventModal()" class="bg-yellow-400 hover:bg-yellow-300 text-indigo-950 font-bold px-4 py-1.5 rounded-lg shadow transition flex items-center gap-1.5">
+          <i class="fa-solid fa-plus"></i> เพิ่มกิจกรรม
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Calendar Container -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full">
+    
+    <!-- Month Navigation Bar -->
+    <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200 mb-6 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <button onclick="changeMonth(-1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition"><i class="fa-solid fa-chevron-left text-lg"></i></button>
+        <button onclick="goToToday()" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium text-sm transition">วันนี้</button>
+        <button onclick="changeMonth(1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition"><i class="fa-solid fa-chevron-right text-lg"></i></button>
+      </div>
+      <h2 id="currentMonthYear" class="text-xl md:text-2xl font-bold text-slate-800"></h2>
+      <div id="syncStatus" class="flex items-center gap-2 text-xs text-emerald-600 font-medium">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> เชื่อมต่อ Realtime แล้ว
+      </div>
+    </div>
+
+    <!-- Calendar Grid -->
+    <div class="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
+      <!-- Days Header -->
+      <div class="grid grid-cols-7 bg-slate-100 border-b border-slate-200 text-center font-semibold text-slate-600 py-3 text-sm">
+        <div class="text-red-500">อาทิตย์</div>
+        <div>จันทร์</div>
+        <div>อังคาร</div>
+        <div>พุธ</div>
+        <div>พฤหัสบดี</div>
+        <div>ศุกร์</div>
+        <div class="text-indigo-600">เสาร์</div>
+      </div>
+      
+      <!-- Days Grid -->
+      <div id="calendarGrid" class="grid grid-cols-7 divide-x divide-y divide-slate-200 min-h-[600px]"></div>
+    </div>
+  </main>
+
+  <!-- MODAL: Add / Edit Event -->
+  <div id="eventModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transform transition-all">
+      <div class="bg-indigo-700 text-white px-6 py-4 flex justify-between items-center">
+        <h3 id="modalTitle" class="text-lg font-bold">เพิ่มกิจกรรมใหม่</h3>
+        <button onclick="closeModal('eventModal')" class="text-indigo-200 hover:text-white text-xl"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="eventForm" onsubmit="saveEvent(event)" class="p-6 space-y-4">
+        <input type="hidden" id="eventId">
+        
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">ชื่อกิจกรรม *</label>
+          <input type="text" id="eventTitle" required placeholder="เช่น ประชุมวางแผนประจำสัปดาห์" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">ประเภทกิจกรรม</label>
+            <select id="eventCategory" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">วันที่ *</label>
+            <input type="date" id="eventDate" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">เวลาเริ่ม *</label>
+            <input type="time" id="eventStartTime" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">เวลาสิ้นสุด *</label>
+            <input type="time" id="eventEndTime" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">ผู้รับผิดชอบ / รายละเอียดเพิ่มเติม</label>
+          <textarea id="eventDesc" rows="2" placeholder="ใส่ชื่อผู้ร่วมงาน หรือ รายละเอียดการประชุม" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"></textarea>
+        </div>
+
+        <div class="flex justify-between items-center pt-4 border-t border-slate-200">
+          <button type="button" id="btnDeleteEvent" onclick="deleteEvent()" class="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-medium transition hidden">
+            <i class="fa-solid fa-trash mr-1"></i> ลบกิจกรรม
+          </button>
+          <div class="flex gap-2 ml-auto">
+            <button type="button" onclick="closeModal('eventModal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium">ยกเลิก</button>
+            <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow">บันทึก</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Manage Categories -->
+  <div id="categoryModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+      <div class="bg-slate-800 text-white px-6 py-4 flex justify-between items-center">
+        <h3 class="text-lg font-bold"><i class="fa-solid fa-tags mr-2"></i> จัดการประเภทกิจกรรม</h3>
+        <button onclick="closeModal('categoryModal')" class="text-slate-300 hover:text-white text-xl"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <!-- Add New Category Form -->
+        <div class="flex gap-2 pb-4 border-b border-slate-200">
+          <input type="text" id="newCatName" placeholder="ชื่อประเภทใหม่..." class="flex-grow px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none">
+          <input type="color" id="newCatColor" value="#3b82f6" class="w-10 h-10 p-1 border border-slate-300 rounded-lg cursor-pointer">
+          <button onclick="addCategory()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-medium">เพิ่ม</button>
+        </div>
+
+        <!-- List of Categories -->
+        <div id="categoryList" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+
+        <div class="text-right pt-2">
+          <button onclick="closeModal('categoryModal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">ปิด</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Share Summary (Weekly/Monthly) -->
+  <div id="shareModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+      <div class="bg-emerald-700 text-white px-6 py-4 flex justify-between items-center">
+        <h3 id="shareModalTitle" class="text-lg font-bold"><i class="fa-solid fa-share-nodes mr-2"></i> แชร์สรุปกิจกรรม</h3>
+        <button onclick="closeModal('shareModal')" class="text-emerald-200 hover:text-white text-xl"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <p class="text-xs text-slate-500">สามารถคัดลอกข้อความด้านล่างนี้ไปวางในกลุ่ม LINE, Slack หรือ Teams ได้ทันที:</p>
+        <textarea id="shareContent" readonly rows="10" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-lg font-mono text-xs text-slate-700 focus:outline-none"></textarea>
+        
+        <div class="flex justify-between items-center pt-2">
+          <span id="copyNotice" class="text-xs text-emerald-600 font-semibold opacity-0 transition-opacity">คัดลอกข้อความแล้ว!</span>
+          <div class="flex gap-2">
+            <button onclick="closeModal('shareModal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium">ปิด</button>
+            <button onclick="copyShareText()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium shadow flex items-center gap-1.5">
+              <i class="fa-regular fa-copy"></i> คัดลอกข้อความ
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION LOGIC -->
+  <script>
+    // --- 1. FIREBASE INITIALIZATION ---
+    // ใช้ Firebase Realtime DB ในการ Sync ข้อมูลแบบเรียลไทม์ระหว่างทีมงาน
+    const firebaseConfig = {
+      databaseURL: "https://team-calendar-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    };
+    
+    // Auto-detect or generate Room ID from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    let roomId = urlParams.get('room') || 'team-main';
+    document.getElementById('roomDisplay').innerText = `ห้องทีม: ${roomId}`;
+
+    // Initialize Firebase (Fallback to memory store if unreachable)
+    let db;
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.database();
+    } catch(e) {
+      console.warn("Firebase initialized in local mode.");
+    }
+
+    // Default Categories
+    let categories = {
+      "cat_1": { name: "ประชุม", color: "#3B82F6" },
+      "cat_2": { name: "งานโครงการ", color: "#10B981" },
+      "cat_3": { name: "อบรม/สัมมนา", color: "#8B5CF6" },
+      "cat_4": { name: "ลาหยุด", color: "#EF4444" },
+      "cat_5": { name: "อื่นๆ", color: "#F59E0B" }
+    };
+
+    let events = {};
+    let currentDate = new Date();
+
+    // --- 2. REALTIME SYNC LISTENERS ---
+    function initSync() {
+      if (db) {
+        // Sync Categories
+        db.ref(`rooms/${roomId}/categories`).on('value', (snapshot) => {
+          const val = snapshot.val();
+          if (val) categories = val;
+          renderCategoryOptions();
+          renderCalendar();
+        });
+
+        // Sync Events
+        db.ref(`rooms/${roomId}/events`).on('value', (snapshot) => {
+          events = snapshot.val() || {};
+          renderCalendar();
+        });
+      } else {
+        renderCategoryOptions();
+        renderCalendar();
+      }
+    }
+
+    // --- 3. CALENDAR RENDERER ---
+    function renderCalendar() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      // Set Header Month Year
+      const monthNames = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      document.getElementById('currentMonthYear').innerText = `${monthNames[month]} ${year + 543}`;
+
+      const grid = document.getElementById('calendarGrid');
+      grid.innerHTML = '';
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Empty cells before month starts
+      for (let i = 0; i < firstDay; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = "bg-slate-50/50 min-h-[100px] border-b border-r border-slate-200";
+        grid.appendChild(emptyCell);
+      }
+
+      // Render days of the month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isToday = dateStr === todayStr;
+
+        const cell = document.createElement('div');
+        cell.className = `min-h-[110px] p-1.5 border-b border-r border-slate-200 transition hover:bg-indigo-50/30 flex flex-col ${isToday ? 'bg-indigo-50/60' : 'bg-white'}`;
+        
+        // Date Header inside cell
+        cell.innerHTML = `
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold ${isToday ? 'bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center shadow-sm' : 'text-slate-700'}">${day}</span>
+            <button onclick="openEventModal('${dateStr}')" class="opacity-0 group-hover:opacity-100 text-indigo-600 hover:text-indigo-800 text-xs p-1" title="เพิ่มกิจกรรม">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+          </div>
+          <div class="event-container space-y-1 flex-grow overflow-y-auto max-h-[85px] text-xs"></div>
+        `;
+
+        cell.classList.add('group');
+        cell.onclick = (e) => {
+          if (e.target === cell || e.target.parentElement === cell) {
+            openEventModal(dateStr);
+          }
+        };
+
+        // Render Events in Date Cell
+        const container = cell.querySelector('.event-container');
+        const dayEvents = Object.entries(events)
+          .map(([id, ev]) => ({ id, ...ev }))
+          .filter(ev => ev.date === dateStr)
+          .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+        dayEvents.forEach(ev => {
+          const cat = categories[ev.category] || { name: 'กิจกรรม', color: '#64748b' };
+          const badge = document.createElement('div');
+          badge.className = 'px-1.5 py-1 rounded text-white text-[11px] font-medium leading-tight cursor-pointer shadow-sm truncate hover:opacity-90 flex items-center justify-between gap-1';
+          badge.style.backgroundColor = cat.color;
+          badge.innerHTML = `
+            <span class="truncate"><b>${ev.startTime}</b> ${ev.title}</span>
+          `;
+          badge.onclick = (e) => {
+            e.stopPropagation();
+            editEvent(ev.id);
+          };
+          container.appendChild(badge);
+        });
+
+        grid.appendChild(cell);
+      }
+    }
+
+    function changeMonth(offset) {
+      currentDate.setMonth(currentDate.getMonth() + offset);
+      renderCalendar();
+    }
+
+    function goToToday() {
+      currentDate = new Date();
+      renderCalendar();
+    }
+
+    // --- 4. EVENT MODAL & CRUD ---
+    function openEventModal(date = '') {
+      document.getElementById('eventForm').reset();
+      document.getElementById('eventId').value = '';
+      document.getElementById('modalTitle').innerText = 'เพิ่มกิจกรรมใหม่';
+      document.getElementById('btnDeleteEvent').classList.add('hidden');
+      
+      if (date) {
+        document.getElementById('eventDate').value = date;
+      } else {
+        document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
+      }
+
+      document.getElementById('eventModal').classList.remove('hidden');
+      document.getElementById('eventModal').classList.add('flex');
+    }
+
+    function editEvent(id) {
+      const ev = events[id];
+      if (!ev) return;
+
+      document.getElementById('eventId').value = id;
+      document.getElementById('eventTitle').value = ev.title;
+      document.getElementById('eventCategory').value = ev.category;
+      document.getElementById('eventDate').value = ev.date;
+      document.getElementById('eventStartTime').value = ev.startTime;
+      document.getElementById('eventEndTime').value = ev.endTime;
+      document.getElementById('eventDesc').value = ev.desc || '';
+
+      document.getElementById('modalTitle').innerText = 'แก้ไขกิจกรรม';
+      document.getElementById('btnDeleteEvent').classList.remove('hidden');
+
+      document.getElementById('eventModal').classList.remove('hidden');
+      document.getElementById('eventModal').classList.add('flex');
+    }
+
+    function saveEvent(e) {
+      e.preventDefault();
+      const id = document.getElementById('eventId').value || 'ev_' + Date.now();
+      const eventData = {
+        title: document.getElementById('eventTitle').value,
+        category: document.getElementById('eventCategory').value,
+        date: document.getElementById('eventDate').value,
+        startTime: document.getElementById('eventStartTime').value,
+        endTime: document.getElementById('eventEndTime').value,
+        desc: document.getElementById('eventDesc').value
+      };
+
+      if (db) {
+        db.ref(`rooms/${roomId}/events/${id}`).set(eventData);
+      } else {
+        events[id] = eventData;
+        renderCalendar();
+      }
+
+      closeModal('eventModal');
+    }
+
+    function deleteEvent() {
+      const id = document.getElementById('eventId').value;
+      if (!id) return;
+
+      if (confirm('คุณต้องการลบกิจกรรมนี้ใช่หรือไม่?')) {
+        if (db) {
+          db.ref(`rooms/${roomId}/events/${id}`).remove();
+        } else {
+          delete events[id];
+          renderCalendar();
+        }
+        closeModal('eventModal');
+      }
+    }
+
+    // --- 5. CATEGORIES MANAGEMENT ---
+    function renderCategoryOptions() {
+      const select = document.getElementById('eventCategory');
+      const list = document.getElementById('categoryList');
+      select.innerHTML = '';
+      list.innerHTML = '';
+
+      Object.entries(categories).forEach(([id, cat]) => {
+        // Dropdown Option
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.innerText = cat.name;
+        select.appendChild(opt);
+
+        // List Item in Category Modal
+        const item = document.createElement('div');
+        item.className = 'flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm';
+        item.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="w-4 h-4 rounded-full" style="background-color: ${cat.color}"></span>
+            <span class="font-medium text-slate-700">${cat.name}</span>
+          </div>
+          <button onclick="deleteCategory('${id}')" class="text-red-500 hover:text-red-700 text-xs px-2 py-1"><i class="fa-solid fa-trash"></i></button>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    function openCategoryModal() {
+      renderCategoryOptions();
+      document.getElementById('categoryModal').classList.remove('hidden');
+      document.getElementById('categoryModal').classList.add('flex');
+    }
+
+    function addCategory() {
+      const name = document.getElementById('newCatName').value.trim();
+      const color = document.getElementById('newCatColor').value;
+      if (!name) return;
+
+      const catId = 'cat_' + Date.now();
+      categories[catId] = { name, color };
+
+      if (db) {
+        db.ref(`rooms/${roomId}/categories`).set(categories);
+      } else {
+        renderCategoryOptions();
+        renderCalendar();
+      }
+
+      document.getElementById('newCatName').value = '';
+    }
+
+    function deleteCategory(catId) {
+      if (Object.keys(categories).length <= 1) {
+        alert('ต้องมีประเภทกิจกรรมอย่างน้อย 1 ประเภท');
+        return;
+      }
+      if (confirm('ต้องการลบประเภทกิจกรรมนี้ใช่หรือไม่?')) {
+        delete categories[catId];
+        if (db) {
+          db.ref(`rooms/${roomId}/categories`).set(categories);
+        } else {
+          renderCategoryOptions();
+          renderCalendar();
+        }
+      }
+    }
+
+    // --- 6. SHARING & SUMMARY GENERATOR ---
+    function openShareWeeklyModal() {
+      const startOfWeek = new Date(currentDate);
+      startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+      const startStr = startOfWeek.toISOString().split('T')[0];
+      const endStr = endOfWeek.toISOString().split('T')[0];
+
+      let text = `📅 **สรุปกิจกรรมประจำสัปดาห์ (${formatThaiDate(startStr)} - ${formatThaiDate(endStr)})**\n`;
+      text += `------------------------------------\n`;
+
+      const sortedEvents = Object.values(events)
+        .filter(ev => ev.date >= startStr && ev.date <= endStr)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+      if (sortedEvents.length === 0) {
+        text += `ไม่มีกิจกรรมในสัปดาห์นี้\n`;
+      } else {
+        let lastDate = '';
+        sortedEvents.forEach(ev => {
+          if (ev.date !== lastDate) {
+            text += `\n📌 **วัน${formatThaiDate(ev.date, true)}**\n`;
+            lastDate = ev.date;
+          }
+          const cat = categories[ev.category]?.name || 'กิจกรรม';
+          text += `• ${ev.startTime} - ${ev.endTime} น. | ${ev.title} [${cat}]${ev.desc ? ` (${ev.desc})` : ''}\n`;
+        });
+      }
+
+      document.getElementById('shareModalTitle').innerHTML = '<i class="fa-solid fa-share-nodes mr-2"></i> สรุปกิจกรรมรายสัปดาห์';
+      document.getElementById('shareContent').value = text;
+      document.getElementById('shareModal').classList.remove('hidden');
+      document.getElementById('shareModal').classList.add('flex');
+    }
+
+    function openShareMonthlyModal() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const monthNames = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      
+      const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+      
+      let text = `🗓️ **สรุปภาพรวมกิจกรรมเดือน ${monthNames[month]} ${year + 543}**\n`;
+      text += `------------------------------------\n`;
+
+      const monthEvents = Object.values(events)
+        .filter(ev => ev.date.startsWith(monthPrefix))
+        .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+      text += `จำนวนกิจกรรมทั้งหมด: ${monthEvents.length} รายการ\n\n`;
+
+      if (monthEvents.length === 0) {
+        text += `ไม่มีกิจกรรมในเดือนนี้\n`;
+      } else {
+        monthEvents.forEach(ev => {
+          const cat = categories[ev.category]?.name || 'กิจกรรม';
+          text += `• ${formatThaiDate(ev.date)} (${ev.startTime} - ${ev.endTime} น.) : ${ev.title} [${cat}]\n`;
+        });
+      }
+
+      document.getElementById('shareModalTitle').innerHTML = '<i class="fa-solid fa-share-nodes mr-2"></i> สรุปกิจกรรมรายเดือน';
+      document.getElementById('shareContent').value = text;
+      document.getElementById('shareModal').classList.remove('hidden');
+      document.getElementById('shareModal').classList.add('flex');
+    }
+
+    function copyShareText() {
+      const textarea = document.getElementById('shareContent');
+      textarea.select();
+      document.execCommand('copy');
+
+      const notice = document.getElementById('copyNotice');
+      notice.classList.remove('opacity-0');
+      setTimeout(() => notice.classList.add('opacity-0'), 2000);
+    }
+
+    function copyInviteLink() {
+      const url = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+      navigator.clipboard.writeText(url).then(() => {
+        alert(`คัดลอกลิงก์เชิญทีมงานเรียบร้อยแล้ว!\nสามารถส่งลิงก์นี้ให้เพื่อนในทีมเข้าใช้งานร่วมกันได้ทันที:\n${url}`);
+      });
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.add('hidden');
+      document.getElementById(modalId).classList.remove('flex');
+    }
+
+    function formatThaiDate(dateStr, includeDayName = false) {
+      const d = new Date(dateStr);
+      const dayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+      const day = d.getDate();
+      const month = d.getMonth() + 1;
+      const year = d.getFullYear() + 543;
+
+      if (includeDayName) {
+        return `${dayNames[d.getDay()]}ที่ ${day}/${month}/${year}`;
+      }
+      return `${day}/${month}/${year}`;
+    }
+
+    // --- INITIALIZE APP ---
+    initSync();
+  </script>
+</body>
+</html>
